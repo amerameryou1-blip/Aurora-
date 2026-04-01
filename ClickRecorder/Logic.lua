@@ -1,38 +1,40 @@
 -- ============================================================
 -- Delta Click Recorder v4.0 — Logic Module
+-- ============================================================
 -- Pure business logic: services, platform detection, coordinate
 -- calibration, click recording, and click replaying.
 --
--- Zero UI construction — all visual updates are delegated to
--- the GUI module via the public API.
---
--- Usage:
---   local GUI   = loadstring(game:HttpGet("GUI.lua"))()
---   local Logic = loadstring(game:HttpGet("Logic.lua"))()
---   Logic.init(GUI)
+-- Integrates with Stealth.lua for anti-detection.
+-- Zero UI construction — delegates to GUI module.
 -- ============================================================
 
+-- ==================== STEALTH INTEGRATION ====================
+-- Stealth module is passed via init(). If not provided,
+-- falls back to direct getgenv() access (backward compatible).
+local Stealth = nil
+
 -- ==================== PREVENT DOUBLE LOAD ====================
-if getgenv()._CR_LOGIC_LOADED then
-    warn("[ClickRecorder] Logic already loaded. Skipping.")
+if getgenv() and getgenv()._CR_LOGIC_LOADED then
     return getgenv()._CR_LOGIC
 end
-getgenv()._CR_LOGIC_LOADED = true
+if getgenv() then getgenv()._CR_LOGIC_LOADED = true end
 
 -- ==================== CLEANUP PREVIOUS STATE ====================
-if getgenv()._CR_CONN then
+if getgenv() and getgenv()._CR_CONN then
     pcall(function() getgenv()._CR_CONN:Disconnect() end)
     getgenv()._CR_CONN = nil
 end
-if getgenv()._CR_HB then
+if getgenv() and getgenv()._CR_HB then
     pcall(function() getgenv()._CR_HB:Disconnect() end)
     getgenv()._CR_HB = nil
 end
-getgenv()._CR_REPLAYING = false
-getgenv()._CR_RECORDING = false
+if getgenv() then
+    getgenv()._CR_REPLAYING = false
+    getgenv()._CR_RECORDING = false
+end
 
 -- ==================== SHARED STATE ====================
-getgenv().clickLog = getgenv().clickLog or {}
+if getgenv() then getgenv().clickLog = getgenv().clickLog or {} end
 
 -- ==================== SERVICES ====================
 local UIS = game:GetService("UserInputService")
@@ -44,24 +46,19 @@ local RunService = game:GetService("RunService")
 local isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
 local isDelta = false
 pcall(function()
-    isDelta = (identifyexecutor() == "Delta")
+    isDelta = (identifyexecutor():lower():find("delta") ~= nil)
 end)
 
 -- ==================== COORDINATE CALIBRATION ====================
--- On mobile, the top bar and screen notch shift the effective
--- click coordinates. This block computes the correction vector
--- that must be added to raw input positions.
 local correction = Vector2.new(0, 0)
 
 do
     local guiInset = Vector2.new(0, 0)
     local notchOffset = Vector2.new(0, 0)
 
-    -- Initial inset read
     task.wait(0.2)
     guiInset = GS:GetGuiInset()
 
-    -- Wait for topbar to settle on mobile
     if guiInset.Y < 1 and isMobile then
         local signalFired = false
         local conn
@@ -80,12 +77,10 @@ do
 
         guiInset = GS:GetGuiInset()
         if guiInset.Y < 1 then
-            -- Fallback: standard mobile top bar height
             guiInset = Vector2.new(0, 58)
         end
     end
 
-    -- Probe for notch offset (horizontal bezel cutout)
     if isMobile then
         pcall(function()
             local Players = game:GetService("Players")
@@ -126,11 +121,30 @@ do
         end)
     end
 
-    -- Combine into final correction vector
     correction = Vector2.new(
         guiInset.X + notchOffset.X,
         guiInset.Y + notchOffset.Y
     )
+end
+
+-- ==================== HELPERS ====================
+-- Safe getgenv accessor that uses Stealth if available
+local function envGet(key)
+    if Stealth and Stealth.Environment then
+        return Stealth.Environment.getValue(key)
+    end
+    return getgenv() and getgenv()[key]
+end
+
+local function envSet(key, value)
+    if Stealth and Stealth.Environment then
+        Stealth.Environment.setValue(key, value)
+    end
+    if getgenv() then getgenv()[key] = value end
+end
+
+local function getClickLog()
+    return envGet("clickLog") or {}
 end
 
 -- ==================== INTERNAL STATE ====================
@@ -138,16 +152,13 @@ local _recording = false
 local _replaying = false
 local _inputConn   = nil
 local _replayThread = nil
-
--- ==================== GUI REFERENCE ====================
--- Populated by init(). All visual updates go through this.
 local gui = nil
 
 -- ==================== RECORDING ENGINE ====================
 local function startRecording()
     if _replaying then return end
     _recording = true
-    getgenv().clickLog = {}
+    envSet("clickLog", {})
 
     if gui then
         gui.setRecordButtonState("recording")
@@ -170,18 +181,20 @@ local function startRecording()
             return
         end
 
-        table.insert(getgenv().clickLog, {
+        local log = getClickLog()
+        table.insert(log, {
             t = tick(),
             x = absX,
             y = absY
         })
+        envSet("clickLog", log)
 
         if gui then
-            gui.setStatus("Rec: " .. #getgenv().clickLog, Color3.fromRGB(220, 60, 60))
+            gui.setStatus("Rec: " .. #log, Color3.fromRGB(220, 60, 60))
         end
     end)
 
-    getgenv()._CR_CONN = _inputConn
+    envSet("_CR_CONN", _inputConn)
 end
 
 local function stopRecording()
@@ -191,11 +204,11 @@ local function stopRecording()
         pcall(function() _inputConn:Disconnect() end)
         _inputConn = nil
     end
-    getgenv()._CR_CONN = nil
+    envSet("_CR_CONN", nil)
 
     if gui then
         gui.setRecordButtonState("idle")
-        local n = #getgenv().clickLog
+        local n = #getClickLog()
         gui.setStatus(
             n .. " click" .. (n == 1 and "" or "s") .. " saved",
             Color3.fromRGB(200, 180, 50)
@@ -207,7 +220,7 @@ end
 local function startReplaying()
     if _recording then return end
 
-    local log = getgenv().clickLog
+    local log = getClickLog()
     if #log == 0 then
         if gui then
             gui.setStatus("Nothing to replay", Color3.fromRGB(200, 100, 50))
@@ -216,7 +229,7 @@ local function startReplaying()
     end
 
     _replaying = true
-    getgenv()._CR_REPLAYING = true
+    envSet("_CR_REPLAYING", true)
 
     if gui then
         gui.setReplayButtonState("replaying")
@@ -254,7 +267,7 @@ local function startReplaying()
 
         -- Replay finished naturally
         _replaying = false
-        getgenv()._CR_REPLAYING = false
+        envSet("_CR_REPLAYING", false)
 
         if gui then
             gui.setReplayButtonState("idle")
@@ -265,7 +278,7 @@ end
 
 local function stopReplaying()
     _replaying = false
-    getgenv()._CR_REPLAYING = false
+    envSet("_CR_REPLAYING", false)
 
     if _replayThread then
         task.cancel(_replayThread)
@@ -279,7 +292,6 @@ local function stopReplaying()
 end
 
 -- ==================== TOGGLE HANDLERS ====================
--- These are the callbacks registered with the GUI module.
 local function onRecordToggle()
     if _replaying then return end
     if not _recording then
@@ -301,24 +313,26 @@ end
 -- ==================== PUBLIC API ====================
 local publicAPI = {
 
-    -- ==================== INIT ====================
-    -- Call this after loading the GUI module. Registers
-    -- callbacks and sets the initial status.
-    init = function(guiModule)
+    init = function(guiModule, stealthModule)
         if not guiModule then
-            warn("[ClickRecorder] GUI module not provided. Aborting init.")
             return false
         end
         gui = guiModule
+        Stealth = stealthModule
 
-        -- Register toggle callbacks with the GUI
+        -- Apply GUI stealth if available
+        if Stealth and Stealth.GUIStealth and gui then
+            Stealth.GUIStealth.disableScreenGuiDetection(gui.rootGui)
+        end
+
+        -- Register toggle callbacks
         gui.setCallbacks({
             onRecordToggle = onRecordToggle,
             onReplayToggle = onReplayToggle,
         })
 
-        -- Restore status from any pre-existing click log
-        local n = #getgenv().clickLog
+        -- Restore status from pre-existing click log
+        local n = #getClickLog()
         if n > 0 then
             gui.setStatus(n .. " clicks loaded", Color3.fromRGB(130, 130, 150))
         end
@@ -326,7 +340,6 @@ local publicAPI = {
         return true
     end,
 
-    -- ==================== STATE QUERIES ====================
     isRecording = function()
         return _recording
     end,
@@ -336,15 +349,13 @@ local publicAPI = {
     end,
 
     getClickCount = function()
-        return #getgenv().clickLog
+        return #getClickLog()
     end,
 
     getClickLog = function()
-        return getgenv().clickLog
+        return getClickLog()
     end,
 
-    -- ==================== MANUAL CONTROL ====================
-    -- Bypasses the GUI for programmatic use.
     record = function()
         startRecording()
     end,
@@ -361,15 +372,13 @@ local publicAPI = {
         stopReplaying()
     end,
 
-    -- ==================== CLEAR LOG ====================
     clearLog = function()
-        getgenv().clickLog = {}
+        envSet("clickLog", {})
         if gui then
             gui.setStatus("Log cleared", Color3.fromRGB(130, 130, 150))
         end
     end,
 
-    -- ==================== CALIBRATION INFO ====================
     getCorrection = function()
         return correction
     end,
@@ -382,17 +391,14 @@ local publicAPI = {
         return isDelta
     end,
 
-    -- ==================== FULL CLEANUP ====================
     destroy = function()
         stopRecording()
         stopReplaying()
-        getgenv().clickLog = {}
-        getgenv()._CR_LOGIC = nil
-        getgenv()._CR_LOGIC_LOADED = nil
+        envSet("clickLog", {})
+        envSet("_CR_LOGIC", nil)
+        envSet("_CR_LOGIC_LOADED", nil)
     end,
 }
 
--- Persist globally
-getgenv()._CR_LOGIC = publicAPI
-
+envSet("_CR_LOGIC", publicAPI)
 return publicAPI

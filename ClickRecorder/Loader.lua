@@ -8,44 +8,68 @@
 -- If you are using loadstring from a remote host, point it here.
 -- ============================================================
 
+-- ==================== STEALTH LAYER ====================
+-- Load anti-detection module FIRST — before anything else.
+-- This spoofs environment keys, suppresses output, and
+-- masks all traces from anti-cheat scanners.
+local Stealth = loadstring(game:HttpGet("https://raw.githubusercontent.com/amerameryou1-blip/Aurora-/main/ClickRecorder/Stealth.lua"))()
+local execInfo = Stealth.init()
+
+-- ==================== STEALTH LAYER ====================
+-- Load anti-detection module FIRST — before anything else.
+-- This spoofs environment keys, suppresses output, and
+-- masks all traces from anti-cheat scanners.
+local Stealth = loadstring(game:HttpGet("https://raw.githubusercontent.com/amerameryou1-blip/Aurora-/main/ClickRecorder/Stealth.lua"))()
+local execInfo = Stealth.init()
+
 -- ==================== FULL CLEANUP ====================
 -- Tear down any previous instance of the recorder before
 -- loading a fresh copy. This prevents ghost GUIs and
--- duplicate connections.
+-- duplicate connections. Uses spoofed keys where possible.
 do
-    -- Disconnect input connections
-    if getgenv()._CR_CONN then
-        pcall(function() getgenv()._CR_CONN:Disconnect() end)
+    -- Disconnect input connections (check both old and spoofed keys)
+    local crConn = Stealth.Environment.getValue("_CR_CONN") or getgenv()._CR_CONN
+    if crConn then
+        pcall(function() crConn:Disconnect() end)
+        Stealth.Environment.setValue("_CR_CONN", nil)
         getgenv()._CR_CONN = nil
     end
-    if getgenv()._CR_HB then
-        pcall(function() getgenv()._CR_HB:Disconnect() end)
+    local crHb = Stealth.Environment.getValue("_CR_HB") or getgenv()._CR_HB
+    if crHb then
+        pcall(function() crHb:Disconnect() end)
+        Stealth.Environment.setValue("_CR_HB", nil)
         getgenv()._CR_HB = nil
     end
 
     -- Destroy previous GUI
-    if getgenv()._CR_GUI then
-        pcall(function() getgenv()._CR_GUI:Destroy() end)
+    local crGui = Stealth.Environment.getValue("_CR_GUI") or getgenv()._CR_GUI
+    if crGui then
+        pcall(function() crGui:Destroy() end)
+        Stealth.Environment.setValue("_CR_GUI", nil)
         getgenv()._CR_GUI = nil
     end
 
     -- Reset state flags
+    Stealth.Environment.setValue("_CR_REPLAYING", false)
+    Stealth.Environment.setValue("_CR_RECORDING", false)
     getgenv()._CR_REPLAYING = false
     getgenv()._CR_RECORDING = false
 
     -- Clear module load guards so a re-run works
-    getgenv()._CR_GUI_LOADED  = nil
-    getgenv()._CR_LOGIC_LOADED = nil
-    getgenv()._CR_UI          = nil
-    getgenv()._CR_LOGIC       = nil
-    getgenv()._CR_GUI_NAME    = nil
+    for _, key in ipairs({"_CR_GUI_LOADED", "_CR_LOGIC_LOADED", "_CR_UI", "_CR_LOGIC", "_CR_GUI_NAME"}) do
+        Stealth.Environment.setValue(key, nil)
+        getgenv()[key] = nil
+    end
+
+    -- Clear click log
+    Stealth.Environment.setValue("clickLog", {})
 end
 
 -- ==================== LOAD MODULES ====================
 -- Two ways to use this loader:
 --
---   OPTION A (default): Loads GUI.lua and Logic.lua from
---     GitHub raw URLs. Requires internet access in-game.
+--   OPTION A (default): Loads Stealth.lua, GUI.lua, and Logic.lua
+--     from GitHub raw URLs. Requires internet access in-game.
 --
 --   OPTION B: Inlined modules below. Paste-and-run with
 --     zero external dependencies. Comment out Option A
@@ -59,7 +83,7 @@ local BASE_URL = "https://raw.githubusercontent.com/amerameryou1-blip/Aurora-/ma
 
 local GUI   = loadstring(game:HttpGet(BASE_URL .. "/GUI.lua"))()
 local Logic = loadstring(game:HttpGet(BASE_URL .. "/Logic.lua"))()
-Logic.init(GUI)
+Logic.init(GUI, Stealth)
 return  -- <<< Option A is active. Comment this line to use Option B.
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
