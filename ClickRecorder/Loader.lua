@@ -42,24 +42,28 @@ do
 end
 
 -- ==================== LOAD MODULES ====================
--- IMPORTANT: Replace these placeholder paths with your actual
--- hosting URLs when distributing. For local testing, you can
--- paste GUI.lua and Logic.lua contents directly above this
--- loader and replace the loadstring calls with require().
-
--- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
--- OPTION A: loadstring from remote URLs (production)
--- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-
--- local GUI_URL   = "https://your-host.com/ClickRecorder/GUI.lua"
--- local LOGIC_URL = "https://your-host.com/ClickRecorder/Logic.lua"
+-- Two ways to use this loader:
 --
--- local GUI   = loadstring(game:HttpGet(GUI_URL))()
--- local Logic = loadstring(game:HttpGet(LOGIC_URL))()
--- Logic.init(GUI)
+--   OPTION A (default): Loads GUI.lua and Logic.lua from
+--     GitHub raw URLs. Requires internet access in-game.
+--
+--   OPTION B: Inlined modules below. Paste-and-run with
+--     zero external dependencies. Comment out Option A
+--     and uncomment Option B to use.
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
--- OPTION B: Inline modules (paste & run — no hosting needed)
+-- OPTION A: loadstring from GitHub (default — production)
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+
+local BASE_URL = "https://raw.githubusercontent.com/amerameryou1-blip/Aurora-/session/agent_467368f4-395d-4d4e-ba84-e15f58ecb06d/ClickRecorder"
+
+local GUI   = loadstring(game:HttpGet(BASE_URL .. "/GUI.lua"))()
+local Logic = loadstring(game:HttpGet(BASE_URL .. "/Logic.lua"))()
+Logic.init(GUI)
+return  -- <<< Option A is active. Comment this line to use Option B.
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- OPTION B: Inline modules (no hosting needed)
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
 -- Paste the full contents of GUI.lua here, wrapped in a function:
