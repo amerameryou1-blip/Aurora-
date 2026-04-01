@@ -15,13 +15,6 @@
 local Stealth = loadstring(game:HttpGet("https://raw.githubusercontent.com/amerameryou1-blip/Aurora-/main/ClickRecorder/Stealth.lua"))()
 local execInfo = Stealth.init()
 
--- ==================== STEALTH LAYER ====================
--- Load anti-detection module FIRST — before anything else.
--- This spoofs environment keys, suppresses output, and
--- masks all traces from anti-cheat scanners.
-local Stealth = loadstring(game:HttpGet("https://raw.githubusercontent.com/amerameryou1-blip/Aurora-/main/ClickRecorder/Stealth.lua"))()
-local execInfo = Stealth.init()
-
 -- ==================== FULL CLEANUP ====================
 -- Tear down any previous instance of the recorder before
 -- loading a fresh copy. This prevents ghost GUIs and
