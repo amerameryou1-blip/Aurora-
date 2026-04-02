@@ -1,14 +1,5 @@
--- ============================================================
--- Delta Click Recorder v4.0 — GUI Module (Premium Edition)
--- ============================================================
--- Premium modern UI with glassmorphism, animated accents,
--- gradient buttons, smooth transitions, and stealth features.
---
--- Zero business logic — delegates to Logic.lua via callbacks.
--- ============================================================
-
--- ==================== ANTI-DETECTION ====================
--- Randomized names that blend in with legitimate Roblox GUIs
+-- Delta Click Recorder v5.0 - GUI Module
+-- Premium UI with animations, gradients, and stealth names
 local function rndName()
     local prefixes = {"Core", "Sys", "Net", "Input", "Render", "Frame", "View", "Touch", "Event", "Signal"}
     local suffixes = {"Handler", "Manager", "Controller", "Bridge", "Adapter", "Proxy", "Cache", "Pool", "Buffer", "Queue"}
@@ -439,7 +430,7 @@ local footerText = Instance.new("TextLabel")
 footerText.Name = rndName()
 footerText.Size = UDim2.new(1, 0, 1, 0)
 footerText.BackgroundTransparency = 1
-footerText.Text = "v4.0 \xC2\xB7 Delta"
+footerText.Text = "v5.0 \xC2\xB7 Delta"
 footerText.TextColor3 = C.textMuted
 footerText.TextSize = 9
 footerText.Font = Enum.Font.Gotham

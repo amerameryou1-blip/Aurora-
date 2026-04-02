@@ -1,50 +1,15 @@
--- ============================================================
--- Delta Click Recorder v4.0 — Stealth Module
--- ============================================================
--- Comprehensive anti-detection layer for Delta Executor.
--- Covers: environment spoofing, GUI hiding, connection masking,
--- behavior randomization, anti-telemetry, and script obfuscation.
---
--- All functions are Delta-compatible (no unsupported APIs).
--- ============================================================
+-- Delta Click Recorder v5.0 - Stealth Module
+-- Anti-detection layer for Delta Executor
 
--- ==================== ENVIRONMENT CHECK ====================
 local isDelta = false
 pcall(function()
     isDelta = (identifyexecutor and identifyexecutor():lower():find("delta") ~= nil)
 end)
 
--- ==================== SAFE API WRAPPER ====================
--- Wraps potentially detectable executor APIs with safe fallbacks
-local SafeAPI = {}
-
-local function safeCall(fn, ...)
-    local ok, result = pcall(fn, ...)
-    return ok, result
-end
-
--- ==================== ENVIRONMENT SPOOFING ====================
--- Delta stores things in getgenv() that anti-cheats can scan for.
--- This module cleans up all traces after initialization.
+-- Environment key spoofing
 local Environment = {}
 
 function Environment.spoofGetgenv()
-    -- Anti-cheats scan getgenv() for suspicious keys.
-    -- We rename our keys to look like legitimate Roblox data.
-    local legitKeys = {
-        "_CR_GUI",
-        "_CR_GUI_NAME",
-        "_CR_UI",
-        "_CR_LOGIC",
-        "_CR_CONN",
-        "_CR_HB",
-        "_CR_RECORDING",
-        "_CR_REPLAYING",
-        "_CR_GUI_LOADED",
-        "_CR_LOGIC_LOADED",
-        "clickLog",
-    }
-
     local spoofMap = {
         _CR_GUI         = "rbx_session_" .. string.format("%08x", math.random(0, 0xFFFFFFFF)),
         _CR_GUI_NAME    = "rbx_config_" .. string.format("%08x", math.random(0, 0xFFFFFFFF)),
@@ -59,10 +24,8 @@ function Environment.spoofGetgenv()
         clickLog        = "rbx_log_" .. string.format("%08x", math.random(0, 0xFFFFFFFF)),
     }
 
-    -- Store the mapping so modules can reference spoofed keys
     Environment._spoofMap = spoofMap
 
-    -- Migrate existing values to spoofed keys
     for oldKey, newKey in pairs(spoofMap) do
         local val = getgenv()[oldKey]
         if val ~= nil then
@@ -91,14 +54,10 @@ function Environment.getValue(key)
     return getgenv()[spoofedKey]
 end
 
--- ==================== GUI STEALTH ====================
--- Makes GUI elements blend in and become undetectable
--- by anti-cheat ScreenGui scanners.
+-- GUI stealth
 local GUIStealth = {}
 
 function GUIStealth.hideFromExplorer(guiInstance)
-    -- Delta supports sethiddenproperty — use it to hide from
-    -- explorer-based detection tools
     if sethiddenproperty and guiInstance then
         pcall(function()
             sethiddenproperty(guiInstance, "ZIndex", -1)
@@ -106,76 +65,39 @@ function GUIStealth.hideFromExplorer(guiInstance)
     end
 end
 
-function GUIStealth.makeInnocent(guiInstance, innocentName)
-    -- Rename GUI elements to look like legitimate Roblox UI
-    if guiInstance and innocentName then
-        pcall(function()
-            guiInstance.Name = innocentName
-        end)
-    end
-end
-
 function GUIStealth.disableScreenGuiDetection(screenGui)
-    -- Anti-cheats scan for ScreenGuis with suspicious properties.
-    -- We neutralize all detectable markers.
     if not screenGui then return end
-
-    -- Disable reset on spawn (already done, but double-check)
     pcall(function()
         screenGui.ResetOnSpawn = false
     end)
-
-    -- Set to core GUI level if possible
     if setcorescreenenabled then
         pcall(function()
             setcorescreenenabled(screenGui, false)
         end)
     end
-
-    -- Hide from explorer if Delta supports it
     GUIStealth.hideFromExplorer(screenGui)
 end
 
 function GUIStealth.innocentNames()
-    -- Returns a list of names that look like legitimate Roblox GUIs
     local names = {
-        "PlayerList",
-        "Chat",
-        "HealthBar",
-        "TouchGui",
-        "ControlScript",
-        "PlayerModule",
-        "RobloxGui",
-        "CoreGui",
-        "StarterGui",
-        "GamepadSupport",
-        "KeyboardProvider",
-        "MouseBehavior",
-        "CameraModule",
-        "BaseCamera",
-        "PopperCam",
-        "ZoomController",
-        "GuiService",
-        "TextChatService",
-        "VoiceChatService",
-        "NotificationService",
+        "PlayerList", "Chat", "HealthBar", "TouchGui", "ControlScript",
+        "PlayerModule", "RobloxGui", "CoreGui", "StarterGui", "GamepadSupport",
+        "KeyboardProvider", "MouseBehavior", "CameraModule", "BaseCamera",
+        "PopperCam", "ZoomController", "GuiService", "TextChatService",
+        "VoiceChatService", "NotificationService",
     }
     return names[math.random(1, #names)]
 end
 
--- ==================== CONNECTION MASKING ====================
--- Hides event connections from anti-cheat connection scanners
+-- Connection masking
 local ConnectionMask = {}
 
 function ConnectionMask.wrapConnection(conn)
-    -- Wrap a connection object so it doesn't appear in
-    -- getconnections() scans by anti-cheat
     if hookmetamethod and conn then
         local oldNamecall
         oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             local method = getnamecallmethod()
             if method == "GetChildren" or method == "GetDescendants" then
-                -- Filter out our connection from scans
                 local result = oldNamecall(self, ...)
                 local filtered = {}
                 for _, item in ipairs(result) do
@@ -199,42 +121,25 @@ function ConnectionMask.safeDisconnect(conn)
     end)
 end
 
--- ==================== BEHAVIOR RANDOMIZATION ====================
--- Makes script behavior look more human and less automated
+-- Behavior randomization
 local Behavior = {}
 
 function Behavior.randomDelay(min, max)
-    -- Returns a random delay between min and max seconds
-    -- Anti-cheats detect fixed-interval patterns
     min = min or 0.01
     max = max or 0.05
     return min + math.random() * (max - min)
 end
 
 function Behavior.jitter(value, percent)
-    -- Adds random jitter to a value (e.g., coordinates)
     percent = percent or 0.02
     local range = value * percent
     return value + (math.random() * range * 2 - range)
 end
 
--- ==================== ANTI-TELEMETRY ====================
--- Blocks common anti-cheat telemetry methods
+-- Anti-telemetry
 local AntiTelemetry = {}
 
-function AntiTelemetry.blockHttpSpy()
-    -- Prevent anti-cheat from detecting our HTTP calls
-    -- by wrapping HttpGet/HttpPost if possible
-    if hookfunction then
-        local httpService = game:GetService("HttpService")
-        -- Note: We don't actually block HttpService — that would break
-        -- the loader. Instead, we just note this as a placeholder for
-        -- future implementation if Delta adds hookfunction support.
-    end
-end
-
 function AntiTelemetry.suppressWarnings()
-    -- Suppress warn() output that could reveal script activity
     if hookfunction then
         pcall(function()
             hookfunction(warn, function(...) end)
@@ -243,7 +148,6 @@ function AntiTelemetry.suppressWarnings()
 end
 
 function AntiTelemetry.suppressPrint()
-    -- Suppress print() output
     if hookfunction then
         pcall(function()
             hookfunction(print, function(...) end)
@@ -251,8 +155,7 @@ function AntiTelemetry.suppressPrint()
     end
 end
 
--- ==================== SCRIPT IDENTITY ====================
--- Generates unique, non-suspicious identifiers
+-- Script identity
 local Identity = {}
 
 local function hexId()
@@ -261,10 +164,6 @@ end
 
 function Identity.generateSessionId()
     return "sess_" .. hexId()
-end
-
-function Identity.generateInstanceId()
-    return "inst_" .. hexId()
 end
 
 function Identity.generateToken()
@@ -276,8 +175,7 @@ function Identity.generateToken()
     return token
 end
 
--- ==================== EXECUTOR DETECTION ====================
--- Detects what executor is running and adapts accordingly
+-- Executor detection
 local ExecutorInfo = {}
 
 function ExecutorInfo.detect()
@@ -307,24 +205,10 @@ function ExecutorInfo.detect()
     return info
 end
 
--- ==================== MEMORY CLEANUP ====================
--- Cleans up script traces from memory after execution
+-- Memory utilities
 local Memory = {}
 
-function Memory.clearScriptTraces()
-    -- Remove any traces that memory scanners could find
-    -- This is a best-effort cleanup
-    pcall(function()
-        -- Clear debug library traces
-        if debug and debug.getregistry then
-            -- Don't actually call this — it's dangerous
-            -- Just noting it as a capability check
-        end
-    end)
-end
-
 function Memory.obfuscateStrings(str)
-    -- Simple XOR obfuscation for sensitive strings
     local key = math.random(1, 255)
     local result = {}
     for i = 1, #str do
@@ -341,7 +225,7 @@ function Memory.deobfuscateString(data)
     return result
 end
 
--- ==================== MAIN STEALTH INITIALIZER ====================
+-- Main module
 local Stealth = {
     Environment     = Environment,
     GUIStealth      = GUIStealth,
@@ -351,24 +235,16 @@ local Stealth = {
     Identity        = Identity,
     ExecutorInfo    = ExecutorInfo,
     Memory          = Memory,
-    SafeAPI         = SafeAPI,
     isDelta         = isDelta,
 }
 
--- Initialize stealth layer
 function Stealth.init()
-    -- 1. Detect executor capabilities
     local execInfo = ExecutorInfo.detect()
-
-    -- 2. Spoof environment keys (rename _CR_* to look legitimate)
     Environment.spoofGetgenv()
-
-    -- 3. Suppress output if hookfunction is available
     if execInfo.supportsHookfunction then
         AntiTelemetry.suppressWarnings()
         AntiTelemetry.suppressPrint()
     end
-
     return execInfo
 end
 
