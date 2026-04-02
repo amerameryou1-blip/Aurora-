@@ -1,5 +1,5 @@
 -- Delta Click Recorder v5.0 - Logic Module
--- Features: timestamps, hold duration, path recording, multi-finger support
+-- Features: timestamps, hold duration, path recording, multi-finger, camera tracking
 
 local Stealth = nil
 
@@ -26,6 +26,7 @@ local UIS = game:GetService("UserInputService")
 local GS  = game:GetService("GuiService")
 local VIM = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 local isMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
 local isDelta = false
@@ -136,6 +137,7 @@ local _replaying = false
 local _inputConn   = nil
 local _touchConn   = nil
 local _pathConn    = nil
+local _cameraConn  = nil
 local _replayThread = nil
 local gui = nil
 
@@ -145,6 +147,18 @@ local touchStartTime = {}
 local touchStartPos = {}
 local touchPath = {}
 local lastRecordTime = 0
+
+-- Camera tracking state
+local lastCamCFrame = nil
+local lastCamTime = 0
+local camChangeThreshold = 0.001
+local camSampleRate = 1/30
+
+-- Camera tracking state
+local lastCamCFrame = nil
+local lastCamTime = 0
+local camChangeThreshold = 0.001
+local camSampleRate = 1/30
 
 -- Apply correction to a position
 local function correctedPos(x, y)
@@ -248,6 +262,44 @@ local function recordPathPoint(fingerId, x, y)
     table.insert(touchPath[fingerId], { x = cx, y = cy, t = t })
 end
 
+-- Camera rotation recording
+local function recordCameraChange()
+    local cam = workspace.CurrentCamera
+    if not cam or not _recording then return end
+
+    local t = tick()
+    local now = t
+    if now - lastCamTime < camSampleRate then return end
+
+    local cf = cam.CFrame
+    if not lastCamCFrame then
+        lastCamCFrame = cf
+        lastCamTime = now
+        return
+    end
+
+    local dx = cf.Position.X - lastCamCFrame.Position.X
+    local dy = cf.Position.Y - lastCamCFrame.Position.Y
+    local dz = cf.Position.Z - lastCamCFrame.Position.Z
+    local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+
+    if dist < camChangeThreshold then return end
+
+    local log = getClickLog()
+    table.insert(log, {
+        type = "cam",
+        t = now,
+        cf = {
+            px = cf.Position.X, py = cf.Position.Y, pz = cf.Position.Z,
+            lx = cf.LookVector.X, ly = cf.LookVector.Y, lz = cf.LookVector.Z,
+        },
+    })
+    envSet("clickLog", log)
+
+    lastCamCFrame = cf
+    lastCamTime = now
+end
+
 -- Recording engine
 local function startRecording()
     if _replaying then return end
@@ -258,6 +310,8 @@ local function startRecording()
     touchStartPos = {}
     touchPath = {}
     lastRecordTime = 0
+    lastCamCFrame = nil
+    lastCamTime = 0
 
     if gui then
         gui.setRecordButtonState("recording")
@@ -324,6 +378,81 @@ local function startRecording()
         end
     end)
 
+    -- Camera rotation tracking
+    _cameraConn = RunService.RenderStepped:Connect(function()
+        if not _recording then return end
+        recordCameraChange()
+    end)
+
+    envSet("_CR_CONN", _inputConn)
+end
+
+    -- Mouse/touch down detection
+    _inputConn = UIS.InputBegan:Connect(function(input, gameProcessed)
+        if not _recording then return end
+
+        local validType = (input.UserInputType == Enum.UserInputType.MouseButton1)
+                       or (input.UserInputType == Enum.UserInputType.Touch)
+        if not validType then return end
+
+        local pos = input.Position
+        local fingerId = 0
+        if input.UserInputType == Enum.UserInputType.Touch and input.UserInputState == Enum.UserInputState.Begin then
+            fingerId = input.UserInputState and 1 or 0
+            -- Use a unique finger ID based on position hash
+            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
+        end
+
+        recordTouchDown(input, pos.X, pos.Y, fingerId)
+    end)
+
+    -- Mouse/touch up detection
+    _touchConn = UIS.InputEnded:Connect(function(input, gameProcessed)
+        if not _recording then return end
+
+        local validType = (input.UserInputType == Enum.UserInputType.MouseButton1)
+                       or (input.UserInputType == Enum.UserInputType.Touch)
+        if not validType then return end
+
+        local pos = input.Position
+        local fingerId = 0
+        if input.UserInputType == Enum.UserInputType.Touch then
+            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
+        end
+
+        recordTouchUp(input, pos.X, pos.Y, fingerId)
+    end)
+
+    -- Path tracking during movement
+    _pathConn = UIS.InputChanged:Connect(function(input, gameProcessed)
+        if not _recording then return end
+        if input.UserInputType ~= Enum.UserInputType.Touch and
+           input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+
+        local pos = input.Position
+        local fingerId = 0
+        if input.UserInputType == Enum.UserInputType.Touch then
+            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
+        else
+            -- For mouse, track finger 0
+            fingerId = 0
+        end
+
+        if activeTouches[fingerId] then
+            recordPathPoint(fingerId, pos.X, pos.Y)
+            activeTouches[fingerId].x = pos.X + correction.X
+            activeTouches[fingerId].y = pos.Y + correction.Y
+        end
+    end)
+
+    -- Camera rotation tracking
+    _cameraConn = RunService.RenderStepped:Connect(function()
+        if not _recording then return end
+        recordCameraChange()
+    end)
+
     envSet("_CR_CONN", _inputConn)
 end
 
@@ -342,12 +471,48 @@ local function stopRecording()
         pcall(function() _pathConn:Disconnect() end)
         _pathConn = nil
     end
+    if _cameraConn then
+        pcall(function() _cameraConn:Disconnect() end)
+        _cameraConn = nil
+    end
     envSet("_CR_CONN", nil)
 
     activeTouches = {}
     touchStartTime = {}
     touchStartPos = {}
     touchPath = {}
+    lastCamCFrame = nil
+    lastCamTime = 0
+
+    if gui then
+        gui.setRecordButtonState("idle")
+        local n = #getClickLog()
+        gui.setStatus(
+            n .. " events saved",
+            Color3.fromRGB(200, 180, 50)
+        )
+    end
+end
+    if _touchConn then
+        pcall(function() _touchConn:Disconnect() end)
+        _touchConn = nil
+    end
+    if _pathConn then
+        pcall(function() _pathConn:Disconnect() end)
+        _pathConn = nil
+    end
+    if _cameraConn then
+        pcall(function() _cameraConn:Disconnect() end)
+        _cameraConn = nil
+    end
+    envSet("_CR_CONN", nil)
+
+    activeTouches = {}
+    touchStartTime = {}
+    touchStartPos = {}
+    touchPath = {}
+    lastCamCFrame = nil
+    lastCamTime = 0
 
     if gui then
         gui.setRecordButtonState("idle")
