@@ -1,32 +1,29 @@
--- Delta Click Recorder v5.0 - GUI Module
+-- Delta Click Recorder v5.1 - GUI Module
 -- Premium UI with animations, gradients, and stealth names
+
 local function rndName()
     local prefixes = {"Core", "Sys", "Net", "Input", "Render", "Frame", "View", "Touch", "Event", "Signal"}
     local suffixes = {"Handler", "Manager", "Controller", "Bridge", "Adapter", "Proxy", "Cache", "Pool", "Buffer", "Queue"}
     return prefixes[math.random(1, #prefixes)] .. suffixes[math.random(1, #suffixes)] .. "_" .. string.format("%04x", math.random(0, 0xFFFF))
 end
 
--- ==================== PREVENT DOUBLE LOAD ====================
 if getgenv()._CR_GUI_LOADED then
     return getgenv()._CR_UI
 end
 getgenv()._CR_GUI_LOADED = true
 
--- ==================== CLEANUP PREVIOUS ====================
 if getgenv()._CR_GUI then
     pcall(function() getgenv()._CR_GUI:Destroy() end)
 end
 getgenv()._CR_GUI = nil
 getgenv()._CR_GUI_NAME = nil
 
--- ==================== SERVICES ====================
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- ==================== SAFE PARENT ====================
 local function safeParent(instance)
     if gethui then
         pcall(function() instance.Parent = gethui() end)
@@ -36,7 +33,6 @@ local function safeParent(instance)
     end
 end
 
--- ==================== TWEEN HELPERS ====================
 local function tween(obj, props, duration, style)
     duration = duration or 0.2
     style = style or Enum.EasingStyle.Quart
@@ -44,7 +40,6 @@ local function tween(obj, props, duration, style)
     return TweenService:Create(obj, info, props)
 end
 
--- ==================== ELEMENT TRACKING ====================
 local trackedElements = {}
 
 local function track(element)
@@ -54,19 +49,18 @@ local function track(element)
     return element
 end
 
--- ==================== COLOR PALETTE ====================
 local C = {
     bgPrimary    = Color3.fromRGB(15, 15, 22),
     bgSecondary  = Color3.fromRGB(22, 22, 32),
     bgTertiary   = Color3.fromRGB(30, 30, 42),
     surface      = Color3.fromRGB(38, 38, 52),
-    accent       = Color3.fromRGB(99, 102, 241),     -- Indigo
+    accent       = Color3.fromRGB(99, 102, 241),
     accentBright = Color3.fromRGB(129, 140, 248),
     accentGlow   = Color3.fromRGB(79, 70, 229),
-    record       = Color3.fromRGB(239, 68, 68),       -- Red
+    record       = Color3.fromRGB(239, 68, 68),
     recordBright = Color3.fromRGB(248, 113, 113),
     recordGlow   = Color3.fromRGB(220, 38, 38),
-    replay       = Color3.fromRGB(34, 197, 94),       -- Green
+    replay       = Color3.fromRGB(34, 197, 94),
     replayBright = Color3.fromRGB(74, 222, 128),
     replayGlow   = Color3.fromRGB(22, 163, 74),
     textPrimary  = Color3.fromRGB(248, 250, 252),
@@ -76,7 +70,6 @@ local C = {
     borderLight  = Color3.fromRGB(63, 63, 85),
 }
 
--- ==================== ROOT SCREEN GUI ====================
 local rootGui = Instance.new("ScreenGui")
 rootGui.Name = rndName()
 rootGui.ResetOnSpawn = false
@@ -88,26 +81,6 @@ safeParent(rootGui)
 getgenv()._CR_GUI = rootGui
 getgenv()._CR_GUI_NAME = rootGui.Name
 
--- ==================== DROP SHADOW (fake) ====================
-local function addShadow(parent, offset, transparency)
-    local shadow = Instance.new("Frame")
-    shadow.Name = rndName()
-    shadow.BackgroundTransparency = transparency or 0.5
-    shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.BorderSizePixel = 0
-    shadow.Size = UDim2.new(1, offset * 2, 1, offset * 2)
-    shadow.Position = UDim2.new(0, -offset, 0, -offset)
-    shadow.ZIndex = -1
-    shadow.Parent = parent
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 14)
-    corner.Parent = shadow
-
-    return shadow
-end
-
--- ==================== MAIN WINDOW ====================
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = rndName()
 mainFrame.Size = UDim2.new(0, 280, 0, 160)
@@ -119,29 +92,22 @@ mainFrame.Draggable = true
 mainFrame.Parent = rootGui
 track(mainFrame)
 
--- Main corner
 local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 14)
 mainCorner.Parent = mainFrame
 
--- Border stroke (subtle)
 local mainStroke = Instance.new("UIStroke")
 mainStroke.Color = C.border
 mainStroke.Thickness = 1
 mainStroke.Transparency = 0.4
 mainStroke.Parent = mainFrame
 
--- Inner glow stroke (accent)
 local glowStroke = Instance.new("UIStroke")
 glowStroke.Color = C.accent
 glowStroke.Thickness = 0
 glowStroke.Transparency = 0.6
 glowStroke.Parent = mainFrame
 
--- Shadow
-addShadow(mainFrame, 8, 0.6)
-
--- ==================== TOP BAR ====================
 local topBar = Instance.new("Frame")
 topBar.Name = rndName()
 topBar.Size = UDim2.new(1, 0, 0, 36)
@@ -154,7 +120,6 @@ local topCorner = Instance.new("UICorner")
 topCorner.CornerRadius = UDim.new(0, 14)
 topCorner.Parent = topBar
 
--- Bottom border line
 local topLine = Instance.new("Frame")
 topLine.Name = rndName()
 topLine.Size = UDim2.new(1, 0, 0, 1)
@@ -163,7 +128,6 @@ topLine.BackgroundColor3 = C.border
 topLine.BorderSizePixel = 0
 topLine.Parent = topBar
 
--- Title label
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = rndName()
 titleLabel.Size = UDim2.new(1, -40, 1, 0)
@@ -177,7 +141,6 @@ titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = topBar
 track(titleLabel)
 
--- Status dot (animated indicator)
 local statusDot = Instance.new("Frame")
 statusDot.Name = rndName()
 statusDot.Size = UDim2.new(0, 8, 0, 8)
@@ -191,7 +154,6 @@ local dotCorner = Instance.new("UICorner")
 dotCorner.CornerRadius = UDim.new(1, 0)
 dotCorner.Parent = statusDot
 
--- Minimize button
 local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Name = rndName()
 minimizeBtn.Size = UDim2.new(0, 24, 0, 24)
@@ -205,7 +167,6 @@ minimizeBtn.BorderSizePixel = 0
 minimizeBtn.Parent = topBar
 track(minimizeBtn)
 
--- ==================== CONTENT AREA ====================
 local contentArea = Instance.new("Frame")
 contentArea.Name = rndName()
 contentArea.Size = UDim2.new(1, -16, 1, -44)
@@ -214,7 +175,6 @@ contentArea.BackgroundTransparency = 1
 contentArea.Parent = mainFrame
 track(contentArea)
 
--- ==================== STATUS TEXT ====================
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Name = rndName()
 statusLabel.Size = UDim2.new(1, 0, 0, 20)
@@ -228,7 +188,6 @@ statusLabel.TextXAlignment = Enum.TextXAlignment.Center
 statusLabel.Parent = contentArea
 track(statusLabel)
 
--- ==================== BUTTON CONTAINER ====================
 local btnContainer = Instance.new("Frame")
 btnContainer.Name = rndName()
 btnContainer.Size = UDim2.new(1, 0, 1, -24)
@@ -237,9 +196,8 @@ btnContainer.BackgroundTransparency = 1
 btnContainer.Parent = contentArea
 track(btnContainer)
 
--- ==================== BUTTON FACTORY ====================
-local function createButton(parent, name, text, x, y, w, h, accentColor, brightColor, glowColor)
-    -- Outer container for glow effect
+-- Button factory: parent, text, x, y, w, h, accent, bright, glow
+local function createButton(parent, text, x, y, w, h, accentColor, brightColor, glowColor)
     local container = Instance.new("Frame")
     container.Name = rndName()
     container.Size = UDim2.new(0, w, 0, h)
@@ -248,7 +206,6 @@ local function createButton(parent, name, text, x, y, w, h, accentColor, brightC
     container.Parent = parent
     track(container)
 
-    -- Glow layer (behind button)
     local glow = Instance.new("Frame")
     glow.Name = rndName()
     glow.Size = UDim2.new(1, 6, 1, 6)
@@ -263,7 +220,6 @@ local function createButton(parent, name, text, x, y, w, h, accentColor, brightC
     glowCorner.CornerRadius = UDim.new(0, 10)
     glowCorner.Parent = glow
 
-    -- Main button
     local btn = Instance.new("TextButton")
     btn.Name = rndName()
     btn.Size = UDim2.new(1, 0, 1, 0)
@@ -282,7 +238,6 @@ local function createButton(parent, name, text, x, y, w, h, accentColor, brightC
     btnCorner.CornerRadius = UDim.new(0, 10)
     btnCorner.Parent = btn
 
-    -- Inner gradient overlay
     local gradient = Instance.new("UIGradient")
     gradient.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, brightColor),
@@ -292,7 +247,6 @@ local function createButton(parent, name, text, x, y, w, h, accentColor, brightC
     gradient.Rotation = 135
     gradient.Parent = btn
 
-    -- Shine effect (hover indicator)
     local shine = Instance.new("Frame")
     shine.Name = rndName()
     shine.Size = UDim2.new(1, 0, 1, 0)
@@ -306,7 +260,6 @@ local function createButton(parent, name, text, x, y, w, h, accentColor, brightC
     shineCorner.CornerRadius = UDim.new(0, 10)
     shineCorner.Parent = shine
 
-    -- Hover effects
     btn.MouseEnter:Connect(function()
         tween(btn, { BackgroundTransparency = 0.1 }, 0.15):Play()
         tween(shine, { BackgroundTransparency = 0.85 }, 0.15):Play()
@@ -319,7 +272,6 @@ local function createButton(parent, name, text, x, y, w, h, accentColor, brightC
         tween(glow, { BackgroundTransparency = 0.85 }, 0.15):Play()
     end)
 
-    -- Click animation
     btn.MouseButton1Down:Connect(function()
         tween(btn, { Size = UDim2.new(1, -2, 1, -2) }, 0.08, Enum.EasingStyle.Quad):Play()
     end)
@@ -339,16 +291,11 @@ local function createButton(parent, name, text, x, y, w, h, accentColor, brightC
     }
 end
 
--- ==================== RECORD BUTTON ====================
 local recordBtn = createButton(
-    btnContainer,
-    "Record",
-    8, 4,
-    126, 48,
+    btnContainer, "Record", 8, 4, 126, 48,
     C.record, C.recordBright, C.recordGlow
 )
 
--- Record icon (circle dot)
 local recordIcon = Instance.new("TextLabel")
 recordIcon.Name = rndName()
 recordIcon.Size = UDim2.new(0, 10, 0, 10)
@@ -363,7 +310,6 @@ recordIcon.ZIndex = 3
 recordIcon.Parent = recordBtn.btn
 track(recordIcon)
 
--- Record text label
 local recordText = Instance.new("TextLabel")
 recordText.Name = rndName()
 recordText.Size = UDim2.new(1, -30, 1, 0)
@@ -378,16 +324,11 @@ recordText.ZIndex = 3
 recordText.Parent = recordBtn.btn
 track(recordText)
 
--- ==================== REPLAY BUTTON ====================
 local replayBtn = createButton(
-    btnContainer,
-    "Replay",
-    146, 4,
-    126, 48,
+    btnContainer, "Replay", 146, 4, 126, 48,
     C.replay, C.replayBright, C.replayGlow
 )
 
--- Replay icon (play triangle)
 local replayIcon = Instance.new("TextLabel")
 replayIcon.Name = rndName()
 replayIcon.Size = UDim2.new(0, 10, 0, 10)
@@ -402,7 +343,6 @@ replayIcon.ZIndex = 3
 replayIcon.Parent = replayBtn.btn
 track(replayIcon)
 
--- Replay text label
 local replayText = Instance.new("TextLabel")
 replayText.Name = rndName()
 replayText.Size = UDim2.new(1, -30, 1, 0)
@@ -417,7 +357,6 @@ replayText.ZIndex = 3
 replayText.Parent = replayBtn.btn
 track(replayText)
 
--- ==================== FOOTER ====================
 local footer = Instance.new("Frame")
 footer.Name = rndName()
 footer.Size = UDim2.new(1, 0, 0, 18)
@@ -430,7 +369,7 @@ local footerText = Instance.new("TextLabel")
 footerText.Name = rndName()
 footerText.Size = UDim2.new(1, 0, 1, 0)
 footerText.BackgroundTransparency = 1
-footerText.Text = "v5.0 \xC2\xB7 Delta"
+footerText.Text = "v5.1 \xC2\xB7 Delta"
 footerText.TextColor3 = C.textMuted
 footerText.TextSize = 9
 footerText.Font = Enum.Font.Gotham
@@ -438,7 +377,6 @@ footerText.TextXAlignment = Enum.TextXAlignment.Center
 footerText.Parent = footer
 track(footerText)
 
--- ==================== MINIMIZE / RESTORE ====================
 local isMinimized = false
 local minimizedSize = UDim2.new(0, 280, 0, 36)
 local normalSize = UDim2.new(0, 280, 0, 160)
@@ -454,7 +392,6 @@ minimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ==================== STATUS DOT ANIMATION ====================
 local pulseTween = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 local pulseAnim = TweenService:Create(statusDot, pulseTween, {
     BackgroundTransparency = 0.3,
@@ -476,7 +413,6 @@ local function startPulse(color)
     pulseAnim:Play()
 end
 
--- ==================== STATUS HELPER ====================
 local defaultStatusColor = C.textSecondary
 
 local function setStatus(text, color)
@@ -489,19 +425,16 @@ local function setStatus(text, color)
     end
 end
 
--- ==================== BUTTON STATE HELPERS ====================
 local function setRecordButtonState(state)
     if state == "recording" then
-        -- Active recording: pulsing red glow
         tween(recordBtn.btn, { BackgroundColor3 = C.record }, 0.2):Play()
         recordText.Text = "Stop"
-        recordIcon.Text = "\xE2\x96\xA0"  -- Stop square
+        recordIcon.Text = "\xE2\x96\xA0"
         startPulse(C.record)
     else
-        -- Idle state
         tween(recordBtn.btn, { BackgroundColor3 = C.record }, 0.2):Play()
         recordText.Text = "Record"
-        recordIcon.Text = "\xE2\x97\x8F"  -- Record dot
+        recordIcon.Text = "\xE2\x97\x8F"
         setDotColor(C.textMuted)
     end
 end
@@ -518,7 +451,6 @@ local function setReplayButtonState(state)
     end
 end
 
--- ==================== CALLBACK SYSTEM ====================
 local callbacks = {
     onRecordToggle = nil,
     onReplayToggle = nil,
@@ -535,7 +467,6 @@ local function setCallbacks(newCallbacks)
     end
 end
 
--- ==================== BUTTON CONNECTIONS ====================
 recordBtn.btn.MouseButton1Click:Connect(function()
     if callbacks.onRecordToggle then
         callbacks.onRecordToggle()
@@ -548,16 +479,12 @@ replayBtn.btn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ==================== ENTRANCE ANIMATION ====================
 mainFrame.Size = UDim2.new(0, 280, 0, 0)
 mainFrame.BackgroundTransparency = 1
 mainStroke.Transparency = 1
 
 task.spawn(function()
     task.wait(0.1)
-    local entrance = TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-
-    -- Slide in
     TweenService:Create(mainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
         Size = UDim2.new(0, 280, 0, 160),
         BackgroundTransparency = 0,
@@ -568,7 +495,6 @@ task.spawn(function()
         Transparency = 0.4,
     }):Play()
 
-    -- Fade in content
     for _, child in ipairs(contentArea:GetChildren()) do
         if child:IsA("GuiObject") and child.Name ~= "" then
             child.Position = child.Position + UDim2.new(0, 0, 0, 10)
@@ -585,7 +511,7 @@ task.spawn(function()
             task.wait(0.04)
             tween(child, {
                 Position = child.Position - UDim2.new(0, 0, 0, 10),
-                BackgroundTransparency = child == btnContainer and 1 or 1,
+                BackgroundTransparency = 1,
             }, 0.3):Play()
             if child:IsA("TextLabel") then
                 tween(child, { TextTransparency = 0 }, 0.3):Play()
@@ -594,7 +520,6 @@ task.spawn(function()
     end
 end)
 
--- ==================== PUBLIC API ====================
 local publicAPI = {
     rootGui       = rootGui,
     mainFrame     = mainFrame,
