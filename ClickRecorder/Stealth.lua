@@ -1,12 +1,10 @@
--- Delta Click Recorder v5.0 - Stealth Module
--- Anti-detection layer for Delta Executor
+-- Delta Click Recorder v5.2 - Stealth Module
 
 local isDelta = false
 pcall(function()
     isDelta = (identifyexecutor and identifyexecutor():lower():find("delta") ~= nil)
 end)
 
--- Environment key spoofing
 local Environment = {}
 
 function Environment.spoofGetgenv()
@@ -23,9 +21,7 @@ function Environment.spoofGetgenv()
         _CR_LOGIC_LOADED = "rbx_lload_" .. string.format("%08x", math.random(0, 0xFFFFFFFF)),
         clickLog        = "rbx_log_" .. string.format("%08x", math.random(0, 0xFFFFFFFF)),
     }
-
     Environment._spoofMap = spoofMap
-
     for oldKey, newKey in pairs(spoofMap) do
         local val = getgenv()[oldKey]
         if val ~= nil then
@@ -33,7 +29,6 @@ function Environment.spoofGetgenv()
             getgenv()[oldKey] = nil
         end
     end
-
     return spoofMap
 end
 
@@ -54,7 +49,6 @@ function Environment.getValue(key)
     return getgenv()[spoofedKey]
 end
 
--- GUI stealth
 local GUIStealth = {}
 
 function GUIStealth.hideFromExplorer(guiInstance)
@@ -70,11 +64,6 @@ function GUIStealth.disableScreenGuiDetection(screenGui)
     pcall(function()
         screenGui.ResetOnSpawn = false
     end)
-    if setcorescreenenabled then
-        pcall(function()
-            setcorescreenenabled(screenGui, false)
-        end)
-    end
     GUIStealth.hideFromExplorer(screenGui)
 end
 
@@ -89,7 +78,6 @@ function GUIStealth.innocentNames()
     return names[math.random(1, #names)]
 end
 
--- Connection masking
 local ConnectionMask = {}
 
 function ConnectionMask.wrapConnection(conn)
@@ -121,7 +109,6 @@ function ConnectionMask.safeDisconnect(conn)
     end)
 end
 
--- Behavior randomization
 local Behavior = {}
 
 function Behavior.randomDelay(min, max)
@@ -136,26 +123,6 @@ function Behavior.jitter(value, percent)
     return value + (math.random() * range * 2 - range)
 end
 
--- Anti-telemetry
-local AntiTelemetry = {}
-
-function AntiTelemetry.suppressWarnings()
-    if hookfunction then
-        pcall(function()
-            hookfunction(warn, function(...) end)
-        end)
-    end
-end
-
-function AntiTelemetry.suppressPrint()
-    if hookfunction then
-        pcall(function()
-            hookfunction(print, function(...) end)
-        end)
-    end
-end
-
--- Script identity
 local Identity = {}
 
 local function hexId()
@@ -175,37 +142,26 @@ function Identity.generateToken()
     return token
 end
 
--- Executor detection
 local ExecutorInfo = {}
 
 function ExecutorInfo.detect()
     local info = {
         name = "unknown",
         isDelta = false,
-        supportsHookfunction = false,
-        supportsSethiddenproperty = false,
-        supportsHookmetamethod = false,
-        supportsNewcclosure = false,
-        supportsGethui = false,
-        supportsCheckcaller = false,
+        supportsHookfunction = hookfunction ~= nil,
+        supportsSethiddenproperty = sethiddenproperty ~= nil,
+        supportsHookmetamethod = hookmetamethod ~= nil,
+        supportsNewcclosure = newcclosure ~= nil,
+        supportsGethui = gethui ~= nil,
+        supportsCheckcaller = checkcaller ~= nil,
     }
-
     pcall(function()
         info.name = identifyexecutor()
         info.isDelta = info.name:lower():find("delta") ~= nil
     end)
-
-    info.supportsHookfunction = hookfunction ~= nil
-    info.supportsSethiddenproperty = sethiddenproperty ~= nil
-    info.supportsHookmetamethod = hookmetamethod ~= nil
-    info.supportsNewcclosure = newcclosure ~= nil
-    info.supportsGethui = gethui ~= nil
-    info.supportsCheckcaller = checkcaller ~= nil
-
     return info
 end
 
--- Memory utilities
 local Memory = {}
 
 function Memory.obfuscateStrings(str)
@@ -225,13 +181,11 @@ function Memory.deobfuscateString(data)
     return result
 end
 
--- Main module
 local Stealth = {
     Environment     = Environment,
     GUIStealth      = GUIStealth,
     ConnectionMask  = ConnectionMask,
     Behavior        = Behavior,
-    AntiTelemetry   = AntiTelemetry,
     Identity        = Identity,
     ExecutorInfo    = ExecutorInfo,
     Memory          = Memory,
@@ -241,10 +195,6 @@ local Stealth = {
 function Stealth.init()
     local execInfo = ExecutorInfo.detect()
     Environment.spoofGetgenv()
-    if execInfo.supportsHookfunction then
-        AntiTelemetry.suppressWarnings()
-        AntiTelemetry.suppressPrint()
-    end
     return execInfo
 end
 

@@ -74,7 +74,7 @@ local rootGui = Instance.new("ScreenGui")
 rootGui.Name = rndName()
 rootGui.ResetOnSpawn = false
 rootGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-rootGui.DisplayOrder = 999999
+rootGui.DisplayOrder = 10
 rootGui.IgnoreGuiInset = false
 safeParent(rootGui)
 
@@ -369,7 +369,7 @@ local footerText = Instance.new("TextLabel")
 footerText.Name = rndName()
 footerText.Size = UDim2.new(1, 0, 1, 0)
 footerText.BackgroundTransparency = 1
-footerText.Text = "v5.1 \xC2\xB7 Delta"
+footerText.Text = "v5.2 \xC2\xB7 Delta"
 footerText.TextColor3 = C.textMuted
 footerText.TextSize = 9
 footerText.Font = Enum.Font.Gotham

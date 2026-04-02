@@ -1,5 +1,7 @@
--- Delta Click Recorder v5.0 - Logic Module
--- Features: timestamps, hold duration, path recording, multi-finger, camera tracking
+-- Delta Click Recorder v5.2 - Logic Module
+-- Fixes: no duplicated code, proper finger tracking, no double-wait,
+-- camera replay, consistent stealth access, mobile touch events,
+-- path timing, safe cancel cleanup
 
 local Stealth = nil
 
@@ -11,10 +13,6 @@ if getgenv() then getgenv()._CR_LOGIC_LOADED = true end
 if getgenv() and getgenv()._CR_CONN then
     pcall(function() getgenv()._CR_CONN:Disconnect() end)
     getgenv()._CR_CONN = nil
-end
-if getgenv() and getgenv()._CR_HB then
-    pcall(function() getgenv()._CR_HB:Disconnect() end)
-    getgenv()._CR_HB = nil
 end
 if getgenv() then
     getgenv()._CR_REPLAYING = false
@@ -68,7 +66,6 @@ do
 
     if isMobile then
         pcall(function()
-            local Players = game:GetService("Players")
             local player = Players.LocalPlayer
             local playerGui = player:WaitForChild("PlayerGui")
 
@@ -112,7 +109,7 @@ do
     )
 end
 
--- Helpers for environment access
+-- Environment access helpers (consistent stealth or direct)
 local function envGet(key)
     if Stealth and Stealth.Environment then
         return Stealth.Environment.getValue(key)
@@ -141,48 +138,41 @@ local _cameraConn  = nil
 local _replayThread = nil
 local gui = nil
 
--- Active touch tracking for multi-finger and hold duration
-local activeTouches = {}
-local touchStartTime = {}
-local touchStartPos = {}
-local touchPath = {}
-local lastRecordTime = 0
-
--- Camera tracking state
+-- Touch tracking: use input object as key to avoid position-hash issues
+local activeTouches = {}       -- key = input object, value = {fingerId, startTime, startPos, path}
+local fingerIdCounter = 0
 local lastCamCFrame = nil
 local lastCamTime = 0
 local camChangeThreshold = 0.001
 local camSampleRate = 1/30
 
--- Camera tracking state
-local lastCamCFrame = nil
-local lastCamTime = 0
-local camChangeThreshold = 0.001
-local camSampleRate = 1/30
-
--- Apply correction to a position
 local function correctedPos(x, y)
     return x + correction.X, y + correction.Y
 end
 
--- Check if position is over recorder GUI
 local function isOverGui(x, y)
     return gui and gui.isOverRecorderGui(x, y)
 end
 
--- Record a touch event
-local function recordTouchDown(touch, x, y, fingerId)
+-- Assign a unique finger ID per simultaneous touch
+local function getFingerId()
+    fingerIdCounter = fingerIdCounter + 1
+    return fingerIdCounter
+end
+
+local function recordTouchDown(input, x, y)
     local cx, cy = correctedPos(x, y)
     if isOverGui(cx, cy) then return end
 
     local t = tick()
-    lastRecordTime = t
+    local fingerId = getFingerId()
 
-    -- Track active touch
-    activeTouches[fingerId] = { x = cx, y = cy, down = true }
-    touchStartTime[fingerId] = t
-    touchStartPos[fingerId] = Vector2.new(cx, cy)
-    touchPath[fingerId] = { { x = cx, y = cy, t = t } }
+    activeTouches[input] = {
+        fingerId = fingerId,
+        startTime = t,
+        startPos = Vector2.new(cx, cy),
+        path = { { x = cx, y = cy, t = t } },
+    }
 
     local log = getClickLog()
     table.insert(log, {
@@ -191,8 +181,6 @@ local function recordTouchDown(touch, x, y, fingerId)
         x = cx,
         y = cy,
         finger = fingerId,
-        hold = 0,
-        path = nil,
     })
     envSet("clickLog", log)
 
@@ -201,22 +189,20 @@ local function recordTouchDown(touch, x, y, fingerId)
     end
 end
 
--- Record a touch release
-local function recordTouchUp(touch, x, y, fingerId)
+local function recordTouchUp(input, x, y)
     local cx, cy = correctedPos(x, y)
     local t = tick()
-    lastRecordTime = t
 
-    -- Calculate hold duration
+    local track = activeTouches[input]
+    local fingerId = 0
     local holdDuration = 0
-    if touchStartTime[fingerId] then
-        holdDuration = t - touchStartTime[fingerId]
-    end
-
-    -- Get path data
     local pathData = nil
-    if touchPath[fingerId] and #touchPath[fingerId] > 1 then
-        pathData = touchPath[fingerId]
+
+    if track then
+        fingerId = track.fingerId
+        holdDuration = t - track.startTime
+        pathData = (#track.path > 1) and track.path or nil
+        activeTouches[input] = nil
     end
 
     local log = getClickLog()
@@ -231,44 +217,35 @@ local function recordTouchUp(touch, x, y, fingerId)
     })
     envSet("clickLog", log)
 
-    -- Clean up tracking
-    activeTouches[fingerId] = nil
-    touchStartTime[fingerId] = nil
-    touchStartPos[fingerId] = nil
-    touchPath[fingerId] = nil
-
     if gui then
         gui.setStatus("Rec: " .. #log, Color3.fromRGB(220, 60, 60))
     end
 end
 
--- Record a path point during drag
-local function recordPathPoint(fingerId, x, y)
+local function recordPathPoint(input, x, y)
+    local track = activeTouches[input]
+    if not track then return end
+
     local cx, cy = correctedPos(x, y)
     if isOverGui(cx, cy) then return end
 
-    if not touchPath[fingerId] then return end
-
     local t = tick()
-    local lastPoint = touchPath[fingerId][#touchPath[fingerId]]
+    local lastPoint = track.path[#track.path]
     if lastPoint then
         local dx = cx - lastPoint.x
         local dy = cy - lastPoint.y
         local dist = math.sqrt(dx * dx + dy * dy)
-        -- Only record if moved enough pixels to avoid spam
         if dist < 3 then return end
     end
 
-    table.insert(touchPath[fingerId], { x = cx, y = cy, t = t })
+    table.insert(track.path, { x = cx, y = cy, t = t })
 end
 
--- Camera rotation recording
 local function recordCameraChange()
     local cam = workspace.CurrentCamera
     if not cam or not _recording then return end
 
-    local t = tick()
-    local now = t
+    local now = tick()
     if now - lastCamTime < camSampleRate then return end
 
     local cf = cam.CFrame
@@ -300,16 +277,12 @@ local function recordCameraChange()
     lastCamTime = now
 end
 
--- Recording engine
 local function startRecording()
     if _replaying then return end
     _recording = true
     envSet("clickLog", {})
     activeTouches = {}
-    touchStartTime = {}
-    touchStartPos = {}
-    touchPath = {}
-    lastRecordTime = 0
+    fingerIdCounter = 0
     lastCamCFrame = nil
     lastCamTime = 0
 
@@ -318,136 +291,35 @@ local function startRecording()
         gui.setStatus("Recording...", Color3.fromRGB(220, 60, 60))
     end
 
-    -- Mouse/touch down detection
     _inputConn = UIS.InputBegan:Connect(function(input, gameProcessed)
         if not _recording then return end
-
         local validType = (input.UserInputType == Enum.UserInputType.MouseButton1)
                        or (input.UserInputType == Enum.UserInputType.Touch)
         if not validType then return end
-
+        if input.UserInputState ~= Enum.UserInputState.Begin then return end
         local pos = input.Position
-        local fingerId = 0
-        if input.UserInputType == Enum.UserInputType.Touch and input.UserInputState == Enum.UserInputState.Begin then
-            fingerId = input.UserInputState and 1 or 0
-            -- Use a unique finger ID based on position hash
-            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
-        end
-
-        recordTouchDown(input, pos.X, pos.Y, fingerId)
+        recordTouchDown(input, pos.X, pos.Y)
     end)
 
-    -- Mouse/touch up detection
     _touchConn = UIS.InputEnded:Connect(function(input, gameProcessed)
         if not _recording then return end
-
         local validType = (input.UserInputType == Enum.UserInputType.MouseButton1)
                        or (input.UserInputType == Enum.UserInputType.Touch)
         if not validType then return end
-
         local pos = input.Position
-        local fingerId = 0
-        if input.UserInputType == Enum.UserInputType.Touch then
-            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
-        end
-
-        recordTouchUp(input, pos.X, pos.Y, fingerId)
+        recordTouchUp(input, pos.X, pos.Y)
     end)
 
-    -- Path tracking during movement
     _pathConn = UIS.InputChanged:Connect(function(input, gameProcessed)
         if not _recording then return end
         if input.UserInputType ~= Enum.UserInputType.Touch and
            input.UserInputType ~= Enum.UserInputType.MouseMovement then
             return
         end
-
         local pos = input.Position
-        local fingerId = 0
-        if input.UserInputType == Enum.UserInputType.Touch then
-            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
-        else
-            -- For mouse, track finger 0
-            fingerId = 0
-        end
-
-        if activeTouches[fingerId] then
-            recordPathPoint(fingerId, pos.X, pos.Y)
-            activeTouches[fingerId].x = pos.X + correction.X
-            activeTouches[fingerId].y = pos.Y + correction.Y
-        end
+        recordPathPoint(input, pos.X, pos.Y)
     end)
 
-    -- Camera rotation tracking
-    _cameraConn = RunService.RenderStepped:Connect(function()
-        if not _recording then return end
-        recordCameraChange()
-    end)
-
-    envSet("_CR_CONN", _inputConn)
-end
-
-    -- Mouse/touch down detection
-    _inputConn = UIS.InputBegan:Connect(function(input, gameProcessed)
-        if not _recording then return end
-
-        local validType = (input.UserInputType == Enum.UserInputType.MouseButton1)
-                       or (input.UserInputType == Enum.UserInputType.Touch)
-        if not validType then return end
-
-        local pos = input.Position
-        local fingerId = 0
-        if input.UserInputType == Enum.UserInputType.Touch and input.UserInputState == Enum.UserInputState.Begin then
-            fingerId = input.UserInputState and 1 or 0
-            -- Use a unique finger ID based on position hash
-            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
-        end
-
-        recordTouchDown(input, pos.X, pos.Y, fingerId)
-    end)
-
-    -- Mouse/touch up detection
-    _touchConn = UIS.InputEnded:Connect(function(input, gameProcessed)
-        if not _recording then return end
-
-        local validType = (input.UserInputType == Enum.UserInputType.MouseButton1)
-                       or (input.UserInputType == Enum.UserInputType.Touch)
-        if not validType then return end
-
-        local pos = input.Position
-        local fingerId = 0
-        if input.UserInputType == Enum.UserInputType.Touch then
-            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
-        end
-
-        recordTouchUp(input, pos.X, pos.Y, fingerId)
-    end)
-
-    -- Path tracking during movement
-    _pathConn = UIS.InputChanged:Connect(function(input, gameProcessed)
-        if not _recording then return end
-        if input.UserInputType ~= Enum.UserInputType.Touch and
-           input.UserInputType ~= Enum.UserInputType.MouseMovement then
-            return
-        end
-
-        local pos = input.Position
-        local fingerId = 0
-        if input.UserInputType == Enum.UserInputType.Touch then
-            fingerId = math.floor(pos.X * 1000 + pos.Y) % 100
-        else
-            -- For mouse, track finger 0
-            fingerId = 0
-        end
-
-        if activeTouches[fingerId] then
-            recordPathPoint(fingerId, pos.X, pos.Y)
-            activeTouches[fingerId].x = pos.X + correction.X
-            activeTouches[fingerId].y = pos.Y + correction.Y
-        end
-    end)
-
-    -- Camera rotation tracking
     _cameraConn = RunService.RenderStepped:Connect(function()
         if not _recording then return end
         recordCameraChange()
@@ -459,80 +331,69 @@ end
 local function stopRecording()
     _recording = false
 
-    if _inputConn then
-        pcall(function() _inputConn:Disconnect() end)
-        _inputConn = nil
-    end
-    if _touchConn then
-        pcall(function() _touchConn:Disconnect() end)
-        _touchConn = nil
-    end
-    if _pathConn then
-        pcall(function() _pathConn:Disconnect() end)
-        _pathConn = nil
-    end
-    if _cameraConn then
-        pcall(function() _cameraConn:Disconnect() end)
-        _cameraConn = nil
-    end
+    if _inputConn then pcall(function() _inputConn:Disconnect() end); _inputConn = nil end
+    if _touchConn then pcall(function() _touchConn:Disconnect() end); _touchConn = nil end
+    if _pathConn then pcall(function() _pathConn:Disconnect() end); _pathConn = nil end
+    if _cameraConn then pcall(function() _cameraConn:Disconnect() end); _cameraConn = nil end
     envSet("_CR_CONN", nil)
 
     activeTouches = {}
-    touchStartTime = {}
-    touchStartPos = {}
-    touchPath = {}
+    fingerIdCounter = 0
     lastCamCFrame = nil
     lastCamTime = 0
 
     if gui then
         gui.setRecordButtonState("idle")
         local n = #getClickLog()
-        gui.setStatus(
-            n .. " events saved",
-            Color3.fromRGB(200, 180, 50)
-        )
-    end
-end
-    if _touchConn then
-        pcall(function() _touchConn:Disconnect() end)
-        _touchConn = nil
-    end
-    if _pathConn then
-        pcall(function() _pathConn:Disconnect() end)
-        _pathConn = nil
-    end
-    if _cameraConn then
-        pcall(function() _cameraConn:Disconnect() end)
-        _cameraConn = nil
-    end
-    envSet("_CR_CONN", nil)
-
-    activeTouches = {}
-    touchStartTime = {}
-    touchStartPos = {}
-    touchPath = {}
-    lastCamCFrame = nil
-    lastCamTime = 0
-
-    if gui then
-        gui.setRecordButtonState("idle")
-        local n = #getClickLog()
-        gui.setStatus(
-            n .. " events saved",
-            Color3.fromRGB(200, 180, 50)
-        )
+        gui.setStatus(n .. " events saved", Color3.fromRGB(200, 180, 50))
     end
 end
 
--- Replay engine
+-- Replay helpers
+local function sendMouseDown(x, y)
+    VIM:SendMouseButtonEvent(x, y, 0, true, game, 1)
+end
+
+local function sendMouseUp(x, y)
+    VIM:SendMouseButtonEvent(x, y, 0, false, game, 1)
+end
+
+local function sendTouchDown(x, y, fingerId)
+    pcall(function()
+        VIM:SendTouchEvent(fingerId, 0, x, y)
+    end)
+end
+
+local function sendTouchMove(x, y, fingerId)
+    pcall(function()
+        VIM:SendTouchEvent(fingerId, 2, x, y)
+    end)
+end
+
+local function sendTouchUp(x, y, fingerId)
+    pcall(function()
+        VIM:SendTouchEvent(fingerId, 1, x, y)
+    end)
+end
+
+local function sendMouseMove(x, y)
+    VIM:SendMouseMoveEvent(x, y, game)
+end
+
+local function setCameraCFrame(cfData)
+    local cam = workspace.CurrentCamera
+    if not cam or not cfData then return end
+    local pos = Vector3.new(cfData.px, cfData.py, cfData.pz)
+    local lookDir = Vector3.new(cfData.lx, cfData.ly, cfData.lz)
+    cam.CFrame = CFrame.new(pos, pos + lookDir)
+end
+
 local function startReplaying()
     if _recording then return end
 
     local log = getClickLog()
     if #log == 0 then
-        if gui then
-            gui.setStatus("Nothing to replay", Color3.fromRGB(200, 100, 50))
-        end
+        if gui then gui.setStatus("Nothing to replay", Color3.fromRGB(200, 100, 50)) end
         return
     end
 
@@ -543,6 +404,8 @@ local function startReplaying()
         gui.setReplayButtonState("replaying")
         gui.setStatus("Replaying...", Color3.fromRGB(60, 180, 90))
     end
+
+    local lastFingerState = {} -- track finger states for cleanup
 
     _replayThread = task.spawn(function()
         for i, entry in ipairs(log) do
@@ -562,26 +425,52 @@ local function startReplaying()
 
             if not _replaying then break end
 
-            if entry.type == "down" then
-                VIM:SendMouseButtonEvent(entry.x, entry.y, 0, true, game, 1)
-            elseif entry.type == "up" then
-                -- If hold duration exists, wait for it
-                if entry.hold and entry.hold > 0 then
-                    task.wait(entry.hold)
+            if entry.type == "cam" then
+                -- Replay camera position
+                if entry.cf then
+                    setCameraCFrame(entry.cf)
+                end
+
+            elseif entry.type == "down" then
+                if isMobile then
+                    sendTouchDown(entry.x, entry.y, entry.finger or 0)
+                    lastFingerState[entry.finger or 0] = "down"
                 else
-                    task.wait(0.05)
+                    sendMouseDown(entry.x, entry.y)
                 end
 
-                -- Replay path if recorded
-                if entry.path and #entry.path > 1 then
-                    for _, point in ipairs(entry.path) do
-                        if not _replaying then break end
-                        VIM:SendMouseMoveEvent(point.x, point.y, game)
-                        task.wait(0.005)
+            elseif entry.type == "up" then
+                if isMobile then
+                    local fid = entry.finger or 0
+                    -- Replay path with correct timing
+                    if entry.path and #entry.path > 1 then
+                        for j, point in ipairs(entry.path) do
+                            if not _replaying then break end
+                            local prevT = (j > 1) and entry.path[j-1].t or entry.t - entry.hold
+                            local waitT = point.t - prevT
+                            if waitT > 0.001 then
+                                task.wait(waitT)
+                            end
+                            sendTouchMove(point.x, point.y, fid)
+                        end
                     end
+                    sendTouchUp(entry.x, entry.y, fid)
+                    lastFingerState[entry.finger or 0] = nil
+                else
+                    -- Replay path with correct timing
+                    if entry.path and #entry.path > 1 then
+                        for j, point in ipairs(entry.path) do
+                            if not _replaying then break end
+                            local prevT = (j > 1) and entry.path[j-1].t or entry.t - entry.hold
+                            local waitT = point.t - prevT
+                            if waitT > 0.001 then
+                                task.wait(waitT)
+                            end
+                            sendMouseMove(point.x, point.y)
+                        end
+                    end
+                    sendMouseUp(entry.x, entry.y)
                 end
-
-                VIM:SendMouseButtonEvent(entry.x, entry.y, 0, false, game, 1)
             end
 
             if gui then
@@ -601,11 +490,19 @@ end
 
 local function stopReplaying()
     _replaying = false
-    envSet("_CR_REPLAYING", false)
 
     if _replayThread then
         task.cancel(_replayThread)
         _replayThread = nil
+    end
+
+    -- Send mouse-up for any held buttons to prevent phantom state
+    sendMouseUp(0, 0)
+    -- Release all touch fingers
+    for fid, state in pairs(lastFingerState) do
+        if state == "down" then
+            sendTouchUp(0, 0, fid)
+        end
     end
 
     if gui then
@@ -614,32 +511,20 @@ local function stopReplaying()
     end
 end
 
--- Toggle handlers
 local function onRecordToggle()
     if _replaying then return end
-    if not _recording then
-        startRecording()
-    else
-        stopRecording()
-    end
+    if not _recording then startRecording() else stopRecording() end
 end
 
 local function onReplayToggle()
     if _recording then return end
-    if not _replaying then
-        startReplaying()
-    else
-        stopReplaying()
-    end
+    if not _replaying then startReplaying() else stopReplaying() end
 end
 
--- Public API
 local publicAPI = {
 
     init = function(guiModule, stealthModule)
-        if not guiModule then
-            return false
-        end
+        if not guiModule then return false end
         gui = guiModule
         Stealth = stealthModule
 
@@ -660,56 +545,24 @@ local publicAPI = {
         return true
     end,
 
-    isRecording = function()
-        return _recording
-    end,
+    isRecording = function() return _recording end,
+    isReplaying = function() return _replaying end,
+    getClickCount = function() return #getClickLog() end,
+    getClickLog = function() return getClickLog() end,
 
-    isReplaying = function()
-        return _replaying
-    end,
-
-    getClickCount = function()
-        return #getClickLog()
-    end,
-
-    getClickLog = function()
-        return getClickLog()
-    end,
-
-    record = function()
-        startRecording()
-    end,
-
-    stopRecord = function()
-        stopRecording()
-    end,
-
-    replay = function()
-        startReplaying()
-    end,
-
-    stopReplay = function()
-        stopReplaying()
-    end,
+    record = function() startRecording() end,
+    stopRecord = function() stopRecording() end,
+    replay = function() startReplaying() end,
+    stopReplay = function() stopReplaying() end,
 
     clearLog = function()
         envSet("clickLog", {})
-        if gui then
-            gui.setStatus("Log cleared", Color3.fromRGB(130, 130, 150))
-        end
+        if gui then gui.setStatus("Log cleared", Color3.fromRGB(130, 130, 150)) end
     end,
 
-    getCorrection = function()
-        return correction
-    end,
-
-    isMobile = function()
-        return isMobile
-    end,
-
-    isDelta = function()
-        return isDelta
-    end,
+    getCorrection = function() return correction end,
+    isMobile = function() return isMobile end,
+    isDelta = function() return isDelta end,
 
     destroy = function()
         stopRecording()
